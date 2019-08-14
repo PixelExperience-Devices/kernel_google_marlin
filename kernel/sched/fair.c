@@ -4536,9 +4536,6 @@ enqueue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 	/* Get the top level CFS RQ for the task CPU */
 	cfs_rq = &(task_rq(p)->cfs);
 
-	/* Update RQ estimated utilization */
-	cfs_rq->avg.util_est += task_util_est(p);
-
 #endif /* CONFIG_SMP */
 
 	hrtick_update(rq);
@@ -4639,12 +4636,7 @@ static void dequeue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 	/* Get the top level CFS RQ for the task CPU */
 	cfs_rq = &(task_rq(p)->cfs);
 
-	/* Update RQ estimated utilization */
-	if (cfs_rq->avg.util_est >= task_util_est(p))
-		cfs_rq->avg.util_est -= task_util_est(p);
-	else
-		cfs_rq->avg.util_est = 0;
-
+	cfs_rq->avg.util_est = 0;
 
 	/* Update estimated utilization */
 	if (task_sleep)
