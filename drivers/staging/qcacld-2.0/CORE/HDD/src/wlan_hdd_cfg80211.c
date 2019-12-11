@@ -3882,6 +3882,11 @@ static int hdd_extscan_start_fill_bucket_channel_spec(
 			total_channels++;
 		}
 
+		if (j != pReqMsg->buckets[bktIndex].numChannels) {
+			hddLog(LOG1, FL("Input parameters didn't match"));
+			return -EINVAL;
+		}
+
 		hdd_extscan_update_dwell_time_limits(
 					pReqMsg, bktIndex,
 					min_dwell_time_active_bucket,
@@ -7903,6 +7908,13 @@ static int __wlan_hdd_cfg80211_do_acs(struct wiphy *wiphy,
 	status = wlan_hdd_validate_context(hdd_ctx);
 	if (0 != status)
 		return status;
+
+	if (!((adapter->device_mode == WLAN_HDD_SOFTAP) ||
+	    (adapter->device_mode == WLAN_HDD_P2P_GO))) {
+		hddLog(VOS_TRACE_LEVEL_ERROR, FL("Invalid device mode %d"),
+		       adapter->device_mode);
+		return -EINVAL;
+	}
 
 	sap_config = &adapter->sessionCtx.ap.sapConfig;
 	vos_mem_zero(&sap_config->acs_cfg, sizeof(struct sap_acs_cfg));
@@ -12075,6 +12087,11 @@ static void wlan_hdd_check_11gmode(u8 *pIe, u8* require_ht, u8* require_vht,
                      u8* pCheckRatesfor11g, eCsrPhyMode* pSapHw_mode)
 {
     u8 i, num_rates = pIe[0];
+
+    if (num_rates > SIR_MAC_RATESET_EID_MAX) {
+        hddLog(VOS_TRACE_LEVEL_ERROR, "Invalid supported rates %d", num_rates);
+        return;
+    }
 
     pIe += 1;
     for ( i = 0; i < num_rates; i++)
@@ -24543,7 +24560,9 @@ wlan_hdd_cfg80211_extscan_signif_wifi_change_results_ind(
         for (j = 0; j < ap_info->numOfRssi; j++)
             hddLog(LOG1, "Rssi %d", *rssi++);
 
-        ap_info += ap_info->numOfRssi * sizeof(*rssi);
+        ap_info = (tSirWifiSignificantChange *)((char *)ap_info +
+                    ap_info->numOfRssi * sizeof(*rssi) +
+                    sizeof(*ap_info));
     }
 
     if (nla_put_u32(skb, QCA_WLAN_VENDOR_ATTR_EXTSCAN_RESULTS_REQUEST_ID,
@@ -24586,7 +24605,9 @@ wlan_hdd_cfg80211_extscan_signif_wifi_change_results_ind(
 
               nla_nest_end(skb, ap);
 
-            ap_info += ap_info->numOfRssi * sizeof(*rssi);
+            ap_info = (tSirWifiSignificantChange *)((char *)ap_info +
+                      ap_info->numOfRssi * sizeof(*rssi) +
+                      sizeof(*ap_info));
         }
         nla_nest_end(skb, aps);
 

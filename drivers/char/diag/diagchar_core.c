@@ -1,4 +1,4 @@
-/* Copyright (c) 2008-2018, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2008-2019, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -22,6 +22,7 @@
 #include <linux/sched.h>
 #include <linux/ratelimit.h>
 #include <linux/timer.h>
+#include <linux/sched.h>
 #ifdef CONFIG_DIAG_OVER_USB
 #include <linux/usb/usbdiag.h>
 #endif
@@ -519,8 +520,8 @@ static int diag_remove_client_entry(struct file *file)
 static int diagchar_close(struct inode *inode, struct file *file)
 {
 	int ret;
-	DIAG_LOG(DIAG_DEBUG_USERSPACE, "diag: process exit %s\n",
-		current->comm);
+	DIAG_LOG(DIAG_DEBUG_USERSPACE, "diag: %s process exit with pid = %d\n",
+		current->comm, current->tgid);
 	ret = diag_remove_client_entry(file);
 	mutex_lock(&driver->diag_maskclear_mutex);
 	driver->mask_clear = 0;
@@ -1197,7 +1198,8 @@ static void diag_md_session_exit(void)
 			diag_log_mask_free(session_info->log_mask);
 			kfree(session_info->log_mask);
 			session_info->log_mask = NULL;
-			diag_msg_mask_free(session_info->msg_mask);
+			diag_msg_mask_free(session_info->msg_mask,
+				session_info);
 			kfree(session_info->msg_mask);
 			session_info->msg_mask = NULL;
 			diag_event_mask_free(session_info->event_mask);
@@ -1270,7 +1272,9 @@ int diag_md_session_create(int mode, int peripheral_mask, int proc)
 			 "return value of event copy. err %d\n", err);
 		goto fail_peripheral;
 	}
-	err = diag_msg_mask_copy(new_session->msg_mask, &msg_mask);
+	new_session->msg_mask_tbl_count = 0;
+	err = diag_msg_mask_copy(new_session, new_session->msg_mask,
+		&msg_mask);
 	if (err) {
 		DIAG_LOG(DIAG_DEBUG_USERSPACE,
 			 "return value of msg copy. err %d\n", err);
@@ -1306,7 +1310,8 @@ fail_peripheral:
 	diag_event_mask_free(new_session->event_mask);
 	kfree(new_session->event_mask);
 	new_session->event_mask = NULL;
-	diag_msg_mask_free(new_session->msg_mask);
+	diag_msg_mask_free(new_session->msg_mask,
+		new_session);
 	kfree(new_session->msg_mask);
 	new_session->msg_mask = NULL;
 	kfree(new_session);
@@ -1334,7 +1339,8 @@ static void diag_md_session_close(int pid)
 	diag_log_mask_free(session_info->log_mask);
 	kfree(session_info->log_mask);
 	session_info->log_mask = NULL;
-	diag_msg_mask_free(session_info->msg_mask);
+	diag_msg_mask_free(session_info->msg_mask,
+		session_info);
 	kfree(session_info->msg_mask);
 	session_info->msg_mask = NULL;
 	diag_event_mask_free(session_info->event_mask);
@@ -2804,6 +2810,16 @@ static int diag_user_process_apps_data(const char __user *buf, int len,
 	return 0;
 }
 
+static int check_data_ready(int index)
+{
+	int data_type = 0;
+
+	mutex_lock(&driver->diagchar_mutex);
+	data_type = driver->data_ready[index];
+	mutex_unlock(&driver->diagchar_mutex);
+	return data_type;
+}
+
 static ssize_t diagchar_read(struct file *file, char __user *buf, size_t count,
 			  loff_t *ppos)
 {
@@ -2815,10 +2831,14 @@ static ssize_t diagchar_read(struct file *file, char __user *buf, size_t count,
 	int exit_stat = 0;
 	int write_len = 0;
 	struct diag_md_session_t *session_info = NULL;
+	struct pid *pid_struct = NULL;
+	struct task_struct *task_s = NULL;
 
+	mutex_lock(&driver->diagchar_mutex);
 	for (i = 0; i < driver->num_clients; i++)
 		if (driver->client_map[i].pid == current->tgid)
 			index = i;
+	mutex_unlock(&driver->diagchar_mutex);
 
 	if (index == -1) {
 		pr_err("diag: Client PID not found in table");
@@ -2828,7 +2848,7 @@ static ssize_t diagchar_read(struct file *file, char __user *buf, size_t count,
 		pr_err("diag: bad address from user side\n");
 		return -EFAULT;
 	}
-	wait_event_interruptible(driver->wait_q, driver->data_ready[index]);
+	wait_event_interruptible(driver->wait_q, (check_data_ready(index)) > 0);
 
 	mutex_lock(&driver->diagchar_mutex);
 
@@ -3000,25 +3020,48 @@ static ssize_t diagchar_read(struct file *file, char __user *buf, size_t count,
 	}
 
 exit:
-	mutex_unlock(&driver->diagchar_mutex);
 	if (driver->data_ready[index] & DCI_DATA_TYPE) {
-		mutex_lock(&driver->dci_mutex);
-		/* Copy the type of data being passed */
 		data_type = driver->data_ready[index] & DCI_DATA_TYPE;
+		mutex_unlock(&driver->diagchar_mutex);
+		/* Copy the type of data being passed */
+		mutex_lock(&driver->dci_mutex);
 		list_for_each_safe(start, temp, &driver->dci_client_list) {
 			entry = list_entry(start, struct diag_dci_client_tbl,
 									track);
-			if (entry->client->tgid != current->tgid)
+			pid_struct = find_get_pid(entry->tgid);
+			if (!pid_struct)
 				continue;
-			if (!entry->in_service)
+			task_s = get_pid_task(pid_struct, PIDTYPE_PID);
+			if (!task_s) {
+				DIAG_LOG(DIAG_DEBUG_DCI,
+				"diag: valid task doesn't exist for pid = %d\n",
+				entry->tgid);
+				put_pid(pid_struct);
 				continue;
+			}
+			if (task_s == entry->client) {
+				if (entry->client->tgid != current->tgid) {
+					put_task_struct(task_s);
+					put_pid(pid_struct);
+					continue;
+				}
+			}
+			if (!entry->in_service) {
+				put_task_struct(task_s);
+				put_pid(pid_struct);
+				continue;
+			}
 			if (copy_to_user(buf + ret, &data_type, sizeof(int))) {
+				put_task_struct(task_s);
+				put_pid(pid_struct);
 				mutex_unlock(&driver->dci_mutex);
 				goto end;
 			}
 			ret += sizeof(int);
 			if (copy_to_user(buf + ret, &entry->client_info.token,
 				sizeof(int))) {
+				put_task_struct(task_s);
+				put_pid(pid_struct);
 				mutex_unlock(&driver->dci_mutex);
 				goto end;
 			}
@@ -3029,13 +3072,18 @@ exit:
 			driver->data_ready[index] ^= DCI_DATA_TYPE;
 			mutex_unlock(&driver->diagchar_mutex);
 			if (exit_stat == 1) {
+				put_task_struct(task_s);
+				put_pid(pid_struct);
 				mutex_unlock(&driver->dci_mutex);
 				goto end;
 			}
+			put_task_struct(task_s);
+			put_pid(pid_struct);
 		}
 		mutex_unlock(&driver->dci_mutex);
 		goto end;
 	}
+	mutex_unlock(&driver->diagchar_mutex);
 end:
 	/*
 	 * Flush any read that is currently pending on DCI data and
