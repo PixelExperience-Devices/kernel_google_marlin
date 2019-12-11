@@ -22563,7 +22563,7 @@ tANI_U32 dot11fGetPackedIERSN(tpAniSirGlobal pCtx, tDot11fIERSN *pIe, tANI_U32 *
         }
         else break;
         *pnNeeded += ( pIe->akm_suite_count * 4 );
-        if ( pIe->RSN_Cap )
+        if ( pIe->RSN_Cap != NULL)
         {
             *pnNeeded += 2;
         }
@@ -22574,7 +22574,7 @@ tANI_U32 dot11fGetPackedIERSN(tpAniSirGlobal pCtx, tDot11fIERSN *pIe, tANI_U32 *
         }
         else break;
         *pnNeeded += ( pIe->pmkid_count * 16 );
-        if ( pIe->gp_mgmt_cipher_suite )
+        if ( pIe->gp_mgmt_cipher_suite != NULL)
         {
             *pnNeeded += 4;
         }
@@ -30486,7 +30486,7 @@ tANI_U32 dot11fPackIeRSN(tpAniSirGlobal pCtx,
         DOT11F_MEMCPY(pCtx, pBuf, &( pSrc->akm_suites ), ( pSrc->akm_suite_count * 4 ));
         *pnConsumed += ( pSrc->akm_suite_count * 4 );
         pBuf += ( pSrc->akm_suite_count * 4 );
-        if ( pSrc->RSN_Cap )        {
+        if ( pSrc->RSN_Cap != NULL)        {
             DOT11F_MEMCPY(pCtx, pBuf, pSrc->RSN_Cap, 2);
             *pnConsumed += 2;
             pBuf += 2;
@@ -30501,7 +30501,7 @@ tANI_U32 dot11fPackIeRSN(tpAniSirGlobal pCtx,
         DOT11F_MEMCPY(pCtx, pBuf, &( pSrc->pmkid ), ( pSrc->pmkid_count * 16 ));
         *pnConsumed += ( pSrc->pmkid_count * 16 );
         pBuf += ( pSrc->pmkid_count * 16 );
-        if ( pSrc->gp_mgmt_cipher_suite )        {
+        if ( pSrc->gp_mgmt_cipher_suite != NULL)        {
             DOT11F_MEMCPY(pCtx, pBuf, pSrc->gp_mgmt_cipher_suite, 4);
             *pnConsumed += 4;
             // fieldsEndFlag = 1

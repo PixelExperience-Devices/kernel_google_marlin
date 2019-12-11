@@ -720,12 +720,8 @@ static int __iw_set_scan(struct net_device *dev, struct iw_request_info *info,
    }
 
    /* push addIEScan in scanRequset if exist */
-   if (pAdapter->scan_info.scanAddIE.addIEdata &&
-       pAdapter->scan_info.scanAddIE.length)
-   {
-       scanRequest.uIEFieldLen = pAdapter->scan_info.scanAddIE.length;
-       scanRequest.pIEField = pAdapter->scan_info.scanAddIE.addIEdata;
-   }
+   scanRequest.uIEFieldLen = pAdapter->scan_info.scanAddIE.length;
+   scanRequest.pIEField = pAdapter->scan_info.scanAddIE.addIEdata;
 
    status = sme_ScanRequest((WLAN_HDD_GET_CTX(pAdapter))->hHal,
                              pAdapter->sessionId, &scanRequest, &scanId,
@@ -1132,12 +1128,8 @@ int iw_set_cscan(struct net_device *dev, struct iw_request_info *info,
         }
 
         /* push addIEScan in scanRequset if exist */
-        if (pAdapter->scan_info.scanAddIE.addIEdata &&
-            pAdapter->scan_info.scanAddIE.length)
-        {
-            scanRequest.uIEFieldLen = pAdapter->scan_info.scanAddIE.length;
-            scanRequest.pIEField = pAdapter->scan_info.scanAddIE.addIEdata;
-        }
+        scanRequest.uIEFieldLen = pAdapter->scan_info.scanAddIE.length;
+        scanRequest.pIEField = pAdapter->scan_info.scanAddIE.addIEdata;
 
         status = sme_ScanRequest((WLAN_HDD_GET_CTX(pAdapter))->hHal,
                                  pAdapter->sessionId, &scanRequest, &scanId,

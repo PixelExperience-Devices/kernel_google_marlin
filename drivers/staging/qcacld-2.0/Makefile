@@ -1,3 +1,5 @@
+ccflags-y += $(call cc-disable-warning, pointer-bool-conversion)
+
 KERNEL_SRC ?= /lib/modules/$(shell uname -r)/build
 
 KBUILD_OPTIONS := WLAN_ROOT=$(PWD)
