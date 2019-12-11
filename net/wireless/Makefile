@@ -1,3 +1,5 @@
+ccflags-y += $(call cc-disable-warning, enum-conversion)
+
 obj-$(CONFIG_CFG80211) += cfg80211.o
 obj-$(CONFIG_LIB80211) += lib80211.o
 obj-$(CONFIG_LIB80211_CRYPT_WEP) += lib80211_crypt_wep.o
