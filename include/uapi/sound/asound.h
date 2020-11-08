@@ -25,6 +25,9 @@
 
 #include <linux/types.h>
 
+#ifndef __KERNEL__
+#include <time.h>
+#endif
 
 /*
  *  protocol version
